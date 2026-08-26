@@ -76,6 +76,7 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
     val samples = session.altitudeSamples
     val minimum = samples.minOfOrNull { it.altitudeMetres }
     val maximum = samples.maxOfOrNull { it.altitudeMetres }
+    val exercise = session.exercise
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -107,6 +108,18 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
                 text = "${session.altitudePoints.size} watch-memory altitude points",
                 style = MaterialTheme.typography.bodyMedium,
             )
+            exercise?.currentDay?.let { currentDay ->
+                val totals = buildList {
+                    currentDay.steps?.let { add("$it steps") }
+                    currentDay.exercise?.let { add("exercise $it") }
+                }
+                if (totals.isNotEmpty()) {
+                    Text(
+                        text = "Watch day total · ${totals.joinToString(" · ")}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
 
             if (samples.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
@@ -126,6 +139,16 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
                 }
                 DetailLine("Raw altitude", "${decodedSize(session.altitudeRawBase64)} bytes")
                 DetailLine("Raw exercise", "${decodedSize(session.exerciseRawBase64)} bytes")
+                exercise?.let { decoded ->
+                    DetailLine(
+                        "Populated step slots",
+                        "${decoded.stepSlots.count { it != null }} of ${decoded.stepSlots.size}",
+                    )
+                    DetailLine(
+                        "Populated exercise slots",
+                        "${decoded.exerciseSlots.count { it != null }} of ${decoded.exerciseSlots.size}",
+                    )
+                }
 
                 if (session.altitudePoints.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))

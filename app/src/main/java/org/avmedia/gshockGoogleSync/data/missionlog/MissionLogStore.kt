@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.avmedia.gshockapi.model.MissionLogData
+import org.avmedia.gshockapi.model.MissionLogExerciseData
+import org.avmedia.gshockapi.protocols.GgB100ProtocolPackets
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,7 +25,15 @@ data class StoredMissionLogSession(
     val endMarkerIndex: Int?,
     val altitudeRawBase64: String,
     val exerciseRawBase64: String,
-)
+) {
+    /** Decode on access so histories saved before exercise support also benefit. */
+    val exercise: MissionLogExerciseData?
+        get() = runCatching {
+            GgB100ProtocolPackets.decodeMissionLogExercise(
+                Base64.decode(exerciseRawBase64, Base64.DEFAULT),
+            )
+        }.getOrNull()
+}
 
 data class StoredAltitudeSample(
     val index: Int,
