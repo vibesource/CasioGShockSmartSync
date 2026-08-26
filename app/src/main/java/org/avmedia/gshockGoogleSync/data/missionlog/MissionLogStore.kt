@@ -28,6 +28,7 @@ data class StoredMissionLogSession(
     val routeStartedAtEpochMillis: Long? = null,
     val routeEndedAtEpochMillis: Long? = null,
     val routePoints: List<StoredRoutePoint>? = null,
+    val routeAltitudeDatum: String? = null,
 ) {
     /** Decode on access so histories saved before exercise support also benefit. */
     val exercise: MissionLogExerciseData?
@@ -96,6 +97,7 @@ class MissionLogStore @Inject constructor(
             routeStartedAtEpochMillis = route?.startedAtEpochMillis,
             routeEndedAtEpochMillis = route?.endedAtEpochMillis,
             routePoints = route?.points,
+            routeAltitudeDatum = route?.let { ROUTE_ALTITUDE_DATUM_MSL },
         )
         val updated = (listOf(session) + _sessions.value).take(MAX_SESSIONS)
         check(preferences.edit().putString(SESSIONS_KEY, gson.toJson(updated)).commit()) {
@@ -117,5 +119,6 @@ class MissionLogStore @Inject constructor(
         const val PREFERENCES_NAME = "mission_log_history"
         const val SESSIONS_KEY = "sessions_v1"
         const val MAX_SESSIONS = 50
+        const val ROUTE_ALTITUDE_DATUM_MSL = "MSL"
     }
 }

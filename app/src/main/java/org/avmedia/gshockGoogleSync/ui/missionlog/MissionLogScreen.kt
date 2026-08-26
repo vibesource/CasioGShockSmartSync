@@ -226,6 +226,10 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
                 if (route.isNotEmpty()) {
                     DetailLine("GPS points", route.size.toString())
                     DetailLine("Route distance", formatDistance(MissionLogRouteMetrics.distanceMetres(route)))
+                    DetailLine(
+                        "GPX elevation",
+                        if (session.routeAltitudeDatum == "MSL") "Mean sea level" else "Omitted (legacy GPS datum)",
+                    )
                 }
 
                 if (session.altitudePoints.isNotEmpty()) {

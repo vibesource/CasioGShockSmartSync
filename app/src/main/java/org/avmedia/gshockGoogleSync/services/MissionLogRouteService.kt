@@ -41,12 +41,13 @@ class MissionLogRouteService : Service() {
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.locations.forEach { location ->
+                val normalized = LocationProvider.Location.fromAndroidLocation(location)
                 val point = StoredRoutePoint(
-                    timestampEpochMillis = location.time,
-                    latitude = location.latitude,
-                    longitude = location.longitude,
-                    altitudeMetres = location.altitude.takeIf { location.hasAltitude() },
-                    accuracyMetres = location.accuracy.takeIf { location.hasAccuracy() },
+                    timestampEpochMillis = normalized.timestampEpochMillis ?: location.time,
+                    latitude = normalized.latitude,
+                    longitude = normalized.longitude,
+                    altitudeMetres = normalized.altitudeMetres,
+                    accuracyMetres = normalized.horizontalAccuracyMetres,
                 )
                 if (!MissionLogRouteFilter.accepts(
                         candidate = point,
