@@ -1,6 +1,7 @@
 package org.avmedia.gshockGoogleSync.services
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.companion.CompanionDeviceManager
@@ -10,6 +11,8 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import dagger.hilt.android.AndroidEntryPoint
 import org.avmedia.gshockGoogleSync.R
 import org.avmedia.gshockGoogleSync.utils.DeviceEventGate
@@ -120,10 +123,23 @@ class GShockCompanionDeviceService : CompanionDeviceService() {
 
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val canUseBackgroundLocation =
+                        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                            ContextCompat.checkSelfPermission(
+                                this,
+                                Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                            ) == PackageManager.PERMISSION_GRANTED
+                    val serviceTypes =
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+                            if (canUseBackgroundLocation) {
+                                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                            } else {
+                                0
+                            }
                     startForeground(
                         1983,
                         notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                        serviceTypes,
                     )
                 } else {
                     startForeground(1983, notification)

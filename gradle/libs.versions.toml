@@ -1,4 +1,5 @@
 [versions]
+playServicesLocation = "21.4.0"
 agp = "9.3.1"
 kotlin = "2.4.10"
 coreKtx = "1.19.0"
@@ -37,6 +38,7 @@ exifinterface = "1.4.2"
 transportApi = "4.1.1"
 
 [libraries]
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-material-icons-core = { module = "androidx.compose.material:material-icons-core", version.ref = "materialIconsCore" }
 androidx-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialIconsCore" }

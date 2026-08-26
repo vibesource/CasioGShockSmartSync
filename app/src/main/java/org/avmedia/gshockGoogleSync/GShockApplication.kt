@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogStore
 import org.avmedia.gshockGoogleSync.data.steps.StepCounterStore
+import org.avmedia.gshockGoogleSync.data.locationindicator.LocationTargetStore
 import org.avmedia.gshockGoogleSync.pairing.CompanionDevicePresenceMonitor
 import org.avmedia.gshockGoogleSync.pairing.DeviceAssociationManager
 import org.avmedia.gshockGoogleSync.services.DeviceManager
@@ -75,6 +76,9 @@ class GShockApplication : Application(), IScreenManager {
     @Inject
     lateinit var stepCounterStore: StepCounterStore
 
+    @Inject
+    lateinit var locationTargetStore: LocationTargetStore
+
     fun init() {
         Timber.i("Initializing GShockApplication")
         CoroutineScope(Dispatchers.IO).launch {
@@ -107,6 +111,7 @@ class GShockApplication : Application(), IScreenManager {
                 screenManager = this,
                 missionLogStore = missionLogStore,
                 stepCounterStore = stepCounterStore,
+                locationTargetStore = locationTargetStore,
             )
         eventHandler.setupEventSubscription()
 

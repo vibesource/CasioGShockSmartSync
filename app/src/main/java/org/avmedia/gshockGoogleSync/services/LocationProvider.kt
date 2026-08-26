@@ -7,8 +7,13 @@ import android.location.Geocoder
 import android.location.LocationManager
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresPermission
+import com.google.android.gms.location.CurrentLocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import kotlin.text.uppercase
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 object LocationProvider {
@@ -49,6 +54,44 @@ object LocationProvider {
                 else -> getCachedLocation(context)
             }
         }.getOrNull()
+
+    /**
+     * Requests a new fused fix instead of accepting the old NETWORK_PROVIDER value used by
+     * legacy callers. A very recent fused fix may be reused, but an old persisted cache is never
+     * returned. This is important when Location Indicator is refreshed after the phone moves.
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun getFreshLocation(
+        context: Context,
+        timeoutMillis: Long = 15_000,
+        maxUpdateAgeMillis: Long = 5_000,
+    ): Location? {
+        val cancellation = CancellationTokenSource()
+        val request = CurrentLocationRequest.Builder()
+            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+            .setMaxUpdateAgeMillis(maxUpdateAgeMillis)
+            .setDurationMillis(timeoutMillis)
+            .build()
+
+        val location = withTimeoutOrNull(timeoutMillis + 1_000) {
+            suspendCancellableCoroutine { continuation ->
+                LocationServices.getFusedLocationProviderClient(context)
+                    .getCurrentLocation(request, cancellation.token)
+                    .addOnSuccessListener { androidLocation ->
+                        if (continuation.isActive) {
+                            continuation.resume(androidLocation?.let(Location::fromAndroidLocation))
+                        }
+                    }
+                    .addOnFailureListener {
+                        if (continuation.isActive) continuation.resume(null)
+                    }
+                continuation.invokeOnCancellation { cancellation.cancel() }
+            }
+        }
+        cancellation.cancel()
+        location?.let { cacheLocation(context, it) }
+        return location
+    }
 
     @RequiresPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
     private fun getLocationResult(context: Context): LocationResult {

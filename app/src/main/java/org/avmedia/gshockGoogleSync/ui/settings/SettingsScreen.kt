@@ -126,6 +126,9 @@ fun SettingsList() {
         WatchFeature(id = "time_adjustment_card") {
             TimeAdjustment(settingsViewModel::onSettingUpdated)
         }
+        WatchFeature(id = "location_indicator_card") {
+            LocationIndicatorSettings()
+        }
     }
 }
 
