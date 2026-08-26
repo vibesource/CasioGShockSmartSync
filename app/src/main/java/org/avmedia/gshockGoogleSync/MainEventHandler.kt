@@ -23,6 +23,7 @@ import org.avmedia.gshockapi.AppNotification
 import org.avmedia.gshockapi.EventAction
 import org.avmedia.gshockapi.ProgressEvents
 import org.avmedia.gshockapi.model.StepCounterData
+import org.avmedia.gshockapi.model.LocationIndicatorCommand
 import org.avmedia.gshockapi.model.LocationIndicatorFailure
 import timber.log.Timber
 import java.util.concurrent.Executors
@@ -49,8 +50,10 @@ class MainEventHandler(
             EventAction("AppNotification") { handleAppNotification() },
             EventAction("LocationServicesDisabled") { handleLocationServicesDisabled() },
             EventAction("StepCounterDataReceived") { handleStepCounterData() },
-            EventAction("LocationIndicatorRefreshRequested") {
-                handleLocationIndicatorConnection(isRefresh = true)
+            EventAction("LocationIndicatorCommandReceived") {
+                val command = ProgressEvents.getPayload("LocationIndicatorCommandReceived")
+                    as? LocationIndicatorCommand ?: return@EventAction
+                handleLocationIndicatorCommand(command, showResult = false)
             },
         )
 
@@ -66,7 +69,7 @@ class MainEventHandler(
 
     private fun handleWatchInitialization() {
         if (repository.isLocationIndicatorConnection()) {
-            handleLocationIndicatorConnection(isRefresh = false)
+            handleLocationIndicatorConnection()
             return
         }
         if (repository.isMissionLogConnection()) {
@@ -81,93 +84,135 @@ class MainEventHandler(
 
     private val locationIndicatorMutex = Mutex()
 
-    private fun handleLocationIndicatorConnection(isRefresh: Boolean) {
+    private fun handleLocationIndicatorConnection() {
         CoroutineScope(Dispatchers.IO).launch {
             if (!locationIndicatorMutex.tryLock()) {
-                Timber.d("Location Indicator: ignoring overlapping refresh request")
+                Timber.d("Location command: ignoring overlapping initial request")
                 return@launch
             }
             try {
-                val target = locationTargetStore.target.value
-                if (target == null) {
-                    runCatching {
-                        if (isRefresh) {
-                            repository.updateLocationIndicatorFailure(
-                                LocationIndicatorFailure.NO_SAVED_DESTINATION,
-                            )
-                        } else {
-                            repository.failLocationIndicator(
-                                LocationIndicatorFailure.NO_SAVED_DESTINATION,
-                            )
-                        }
-                    }.onFailure {
-                        Timber.e(it, "Location Indicator failure response could not be sent")
-                    }
-                    if (!isRefresh) AppSnackbar("Location Indicator failed: no destination is saved")
-                    return@launch
-                }
-
-                val current = LocationProvider.getFreshLocation(context)
-                if (current == null) {
-                    runCatching {
-                        if (isRefresh) {
-                            repository.updateLocationIndicatorFailure(
-                                LocationIndicatorFailure.CURRENT_LOCATION_UNAVAILABLE,
-                            )
-                        } else {
-                            repository.failLocationIndicator(
-                                LocationIndicatorFailure.CURRENT_LOCATION_UNAVAILABLE,
-                            )
-                        }
-                    }.onFailure {
-                        Timber.e(it, "Location Indicator failure response could not be sent")
-                    }
-                    if (!isRefresh) {
-                        AppSnackbar("Location Indicator failed: fresh phone location is unavailable")
-                    }
-                    return@launch
-                }
-
-                val result = LocationIndicatorCalculator.calculate(
-                    currentLatitude = current.latitude,
-                    currentLongitude = current.longitude,
-                    targetLatitude = target.latitude,
-                    targetLongitude = target.longitude,
-                )
-                runCatching {
-                    if (isRefresh) {
-                        repository.updateLocationIndicator(
-                            result.distanceMetres,
-                            result.bearingDegrees,
-                        )
-                    } else {
-                        repository.completeLocationIndicator(
-                            result.distanceMetres,
-                            result.bearingDegrees,
-                        )
-                    }
-                }.onSuccess {
-                    Timber.i(
-                        "Location Indicator ${if (isRefresh) "refresh" else "complete"}: " +
-                            "${result.distanceMetres}m at ${result.bearingDegrees}deg",
-                    )
-                    if (!isRefresh) {
-                        AppSnackbar(
-                            "Location Indicator: ${result.distanceMetres} m at " +
-                                "${result.bearingDegrees}°",
-                        )
-                    }
-                }.onFailure { error ->
-                    Timber.e(error, "Location Indicator transfer failed")
-                    if (!isRefresh) {
-                        AppSnackbar(
-                            "Location Indicator failed: ${error.message ?: "unknown error"}",
-                        )
-                    }
-                }
+                processLocationIndicatorCommand(repository.requestLocationIndicatorCommand(), true)
+            } catch (error: Exception) {
+                Timber.e(error, "Location command transfer failed")
+                AppSnackbar("Location command failed: ${error.message ?: "unknown error"}")
             } finally {
                 locationIndicatorMutex.unlock()
             }
+        }
+    }
+
+    private fun handleLocationIndicatorCommand(
+        command: LocationIndicatorCommand,
+        showResult: Boolean,
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            if (!locationIndicatorMutex.tryLock()) {
+                Timber.d("Location command: ignoring overlapping ${command.name} request")
+                return@launch
+            }
+            try {
+                processLocationIndicatorCommand(command, showResult)
+            } catch (error: Exception) {
+                Timber.e(error, "Location command ${command.name} failed")
+                if (showResult) AppSnackbar("Location command failed: ${error.message ?: "unknown error"}")
+            } finally {
+                locationIndicatorMutex.unlock()
+            }
+        }
+    }
+
+    private suspend fun processLocationIndicatorCommand(
+        command: LocationIndicatorCommand,
+        showResult: Boolean,
+    ) {
+        when (command) {
+            LocationIndicatorCommand.SAVE_CURRENT_LOCATION -> saveLocationMemory()
+            LocationIndicatorCommand.DELETE_SAVED_LOCATION -> clearLocationMemory()
+            LocationIndicatorCommand.CALCULATE_DISTANCE_AND_BEARING ->
+                calculateLocationIndicator(showResult)
+        }
+    }
+
+    private suspend fun saveLocationMemory() {
+        val current = LocationProvider.getFreshLocation(context)
+        if (current == null) {
+            repository.respondLocationIndicator(
+                LocationIndicatorCommand.SAVE_CURRENT_LOCATION,
+                LocationIndicatorFailure.CURRENT_LOCATION_UNAVAILABLE.code,
+            )
+            AppSnackbar("Location Memory failed: fresh phone location is unavailable")
+            return
+        }
+
+        val saveResult = runCatching {
+            locationTargetStore.save(current.latitude, current.longitude)
+        }
+        val resultCode = if (saveResult.isSuccess) 0 else LocationIndicatorFailure.UNKNOWN.code
+        repository.respondLocationIndicator(LocationIndicatorCommand.SAVE_CURRENT_LOCATION, resultCode)
+        saveResult
+            .onSuccess {
+                Timber.i("Location Memory saved from watch request")
+                AppSnackbar("Location Memory saved")
+            }
+            .onFailure { error ->
+                Timber.e(error, "Location Memory could not be persisted")
+                AppSnackbar("Location Memory could not be saved")
+            }
+    }
+
+    private suspend fun clearLocationMemory() {
+        val clearResult = runCatching { locationTargetStore.clear() }
+        val resultCode = if (clearResult.isSuccess) 0 else LocationIndicatorFailure.UNKNOWN.code
+        repository.respondLocationIndicator(LocationIndicatorCommand.DELETE_SAVED_LOCATION, resultCode)
+        clearResult
+            .onSuccess {
+                Timber.i("Location Memory cleared from watch request")
+                AppSnackbar("Location Memory cleared")
+            }
+            .onFailure { error ->
+                Timber.e(error, "Location Memory could not be cleared")
+                AppSnackbar("Location Memory could not be cleared")
+            }
+    }
+
+    private suspend fun calculateLocationIndicator(showResult: Boolean) {
+        val target = locationTargetStore.target.value
+        if (target == null) {
+            repository.respondLocationIndicator(
+                LocationIndicatorCommand.CALCULATE_DISTANCE_AND_BEARING,
+                LocationIndicatorFailure.NO_SAVED_DESTINATION.code,
+            )
+            if (showResult) AppSnackbar("Location Indicator failed: no destination is saved")
+            return
+        }
+
+        val current = LocationProvider.getFreshLocation(context)
+        if (current == null) {
+            repository.respondLocationIndicator(
+                LocationIndicatorCommand.CALCULATE_DISTANCE_AND_BEARING,
+                LocationIndicatorFailure.CURRENT_LOCATION_UNAVAILABLE.code,
+            )
+            if (showResult) {
+                AppSnackbar("Location Indicator failed: fresh phone location is unavailable")
+            }
+            return
+        }
+
+        val result = LocationIndicatorCalculator.calculate(
+            currentLatitude = current.latitude,
+            currentLongitude = current.longitude,
+            targetLatitude = target.latitude,
+            targetLongitude = target.longitude,
+        )
+        repository.respondLocationIndicator(
+            LocationIndicatorCommand.CALCULATE_DISTANCE_AND_BEARING,
+            resultCode = 0,
+            distanceMetres = result.distanceMetres,
+            bearingDegrees = result.bearingDegrees,
+        )
+        Timber.i("Location Indicator complete: ${result.distanceMetres}m at ${result.bearingDegrees}deg")
+        if (showResult) {
+            AppSnackbar("Location Indicator: ${result.distanceMetres} m at ${result.bearingDegrees}°")
         }
     }
 

@@ -112,10 +112,10 @@ fun LocationIndicatorSettings(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Location Indicator")
+            Text("Location Memory & Indicator")
             Text(
                 if (target == null) {
-                    "Save a destination. When started from the watch, the phone sends its distance and bearing."
+                    "Save a destination here, or hold the watch's connect button to remember your current position."
                 } else {
                     "Destination: ${target?.latitude}, ${target?.longitude}"
                 },
