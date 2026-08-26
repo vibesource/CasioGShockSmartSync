@@ -9,12 +9,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlin.math.roundToInt
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogStore
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteStore
 import org.avmedia.gshockGoogleSync.data.steps.StepCounterStore
 import org.avmedia.gshockGoogleSync.data.locationindicator.LocationIndicatorCalculator
 import org.avmedia.gshockGoogleSync.data.locationindicator.LocationTargetStore
+import org.avmedia.gshockGoogleSync.data.diagnostics.SyncDiagnosticsStore
 import org.avmedia.gshockGoogleSync.services.NotificationMonitorService
 import org.avmedia.gshockGoogleSync.services.LocationProvider
 import org.avmedia.gshockGoogleSync.services.MissionLogRouteService
@@ -28,6 +30,7 @@ import org.avmedia.gshockapi.model.StepCounterData
 import org.avmedia.gshockapi.model.LocationIndicatorCommand
 import org.avmedia.gshockapi.model.LocationIndicatorFailure
 import org.avmedia.gshockapi.protocols.GgB100ProtocolPackets.MissionLogState.Command
+import org.avmedia.gshockapi.WatchInfo
 import timber.log.Timber
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -40,6 +43,7 @@ class MainEventHandler(
     private val missionLogRouteStore: MissionLogRouteStore,
     private val stepCounterStore: StepCounterStore,
     private val locationTargetStore: LocationTargetStore,
+    private val syncDiagnosticsStore: SyncDiagnosticsStore,
 ) {
     fun setupEventSubscription() {
         val eventActions = arrayOf(
@@ -49,7 +53,7 @@ class MainEventHandler(
             EventAction("Error") { handleError() },
             EventAction("WaitForConnection") { handleWaitForConnection() },
             EventAction("Disconnect") { handleDisconnect() },
-            EventAction("HomeTimeUpdated") {},
+            EventAction("HomeTimeUpdated") { handleHomeTimeUpdated() },
             EventAction("RunActions") { handleRunAction() },
             EventAction("AppNotification") { handleAppNotification() },
             EventAction("LocationServicesDisabled") { handleLocationServicesDisabled() },
@@ -67,11 +71,18 @@ class MainEventHandler(
     private fun handleStepCounterData() {
         val steps = ProgressEvents.getPayload("StepCounterDataReceived") as? StepCounterData ?: return
         runCatching { stepCounterStore.save(steps) }
-            .onSuccess { Timber.i("Step count synchronized: ${steps.currentDaySteps}") }
+            .onSuccess {
+                Timber.i("Step count synchronized: ${steps.currentDaySteps}")
+                syncDiagnosticsStore.record(
+                    "STEP_SYNC",
+                    "Step data received: ${steps.currentDaySteps ?: "unavailable"}",
+                )
+            }
             .onFailure { error -> Timber.e(error, "Step count could not be persisted") }
     }
 
     private fun handleWatchInitialization() {
+        syncDiagnosticsStore.record("CONNECTION", connectionReasonLabel())
         if (repository.isLocationIndicatorConnection()) {
             handleLocationIndicatorConnection()
             return
@@ -84,6 +95,46 @@ class MainEventHandler(
             NotificationMonitorService.startService(context)
         }
         screenManager.showContentSelector(repository)
+    }
+
+    private fun connectionReasonLabel(): String = when {
+        repository.isAutoTimeStarted() -> "Automatic scheduled connection (reason 0x03)"
+        repository.isMissionLogConnection() -> "Mission Log connection (reason 0x08)"
+        repository.isLocationIndicatorConnection() -> "Location command connection (reason 0x07)"
+        repository.isActionButtonPressed() -> "Application connection (reason 0x04)"
+        repository.isNormalButtonPressed() -> "Manual connection"
+        repository.isAlwaysConnectedConnectionPressed() -> "Always-connected request"
+        repository.isFindPhoneButtonPressed() -> "Find-phone request"
+        else -> "Unknown connection reason"
+    }
+
+    private val altimeterCorrectionMutex = Mutex()
+
+    private fun handleHomeTimeUpdated() {
+        syncDiagnosticsStore.record("TIME_SYNC", connectionReasonLabel())
+        if (!repository.isAutoTimeStarted() || !WatchInfo.hasAltimeterCorrection) return
+
+        CoroutineScope(Dispatchers.IO).launch {
+            if (!altimeterCorrectionMutex.tryLock()) return@launch
+            try {
+                val location = LocationProvider.getFreshLocation(context, timeoutMillis = 20_000)
+                val altitude = location?.altitudeMetres?.roundToInt()
+                val success = runCatching { repository.correctAltimeter(altitude) }
+                    .getOrElse { error ->
+                        Timber.e(error, "Scheduled altimeter correction failed")
+                        false
+                    }
+                val message = when {
+                    success && altitude != null -> "Watch accepted ${altitude} m from phone location"
+                    altitude == null -> "Phone altitude unavailable; failure response sent"
+                    else -> "Watch rejected ${altitude} m correction"
+                }
+                syncDiagnosticsStore.record("ALTITUDE_CORRECTION", message)
+                Timber.i("Scheduled altimeter correction: $message")
+            } finally {
+                altimeterCorrectionMutex.unlock()
+            }
+        }
     }
 
     private val locationIndicatorMutex = Mutex()

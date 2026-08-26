@@ -3,6 +3,9 @@ package org.avmedia.gshockGoogleSync.data.missionlog
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -29,11 +32,17 @@ data class MissionLogRoute(
     val points: List<StoredRoutePoint>,
 )
 
+data class ActiveMissionLogRoute(
+    val isActive: Boolean = false,
+    val startedAtEpochMillis: Long? = null,
+    val pointCount: Int = 0,
+)
+
 object MissionLogRouteMetrics {
     fun distanceMetres(points: List<StoredRoutePoint>): Double =
         points.zipWithNext().sumOf { (start, end) -> distanceMetres(start, end) }
 
-    private fun distanceMetres(start: StoredRoutePoint, end: StoredRoutePoint): Double {
+    fun distanceMetres(start: StoredRoutePoint, end: StoredRoutePoint): Double {
         val latitude1 = Math.toRadians(start.latitude)
         val latitude2 = Math.toRadians(end.latitude)
         val latitudeDelta = latitude2 - latitude1
@@ -45,6 +54,23 @@ object MissionLogRouteMetrics {
     }
 
     private const val EARTH_RADIUS_METRES = 6_371_000.0
+}
+
+object MissionLogRouteFilter {
+    private const val MAX_ROUTE_SPEED_METRES_PER_SECOND = 15.0
+
+    fun accepts(
+        candidate: StoredRoutePoint,
+        previous: StoredRoutePoint?,
+        maximumAccuracyMetres: Float,
+    ): Boolean {
+        if (candidate.accuracyMetres?.let { it > maximumAccuracyMetres } == true) return false
+        if (previous == null) return true
+        val elapsedSeconds = (candidate.timestampEpochMillis - previous.timestampEpochMillis) / 1_000.0
+        if (elapsedSeconds <= 0) return false
+        return MissionLogRouteMetrics.distanceMetres(previous, candidate) / elapsedSeconds <=
+            MAX_ROUTE_SPEED_METRES_PER_SECOND
+    }
 }
 
 /**
@@ -59,6 +85,9 @@ class MissionLogRouteStore @Inject constructor(
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val routeFile: File
         get() = File(context.filesDir, ACTIVE_ROUTE_FILE)
+    private val _recordingState = MutableStateFlow(loadRecordingState())
+
+    val recordingState: StateFlow<ActiveMissionLogRoute> = _recordingState.asStateFlow()
 
     @Synchronized
     fun begin(startedAtEpochMillis: Long = System.currentTimeMillis()) {
@@ -69,6 +98,7 @@ class MissionLogRouteStore @Inject constructor(
                 .putLong(KEY_STARTED_AT, startedAtEpochMillis)
                 .commit(),
         ) { "Unable to start Mission Log route storage" }
+        _recordingState.value = ActiveMissionLogRoute(true, startedAtEpochMillis, 0)
     }
 
     @Synchronized
@@ -80,6 +110,10 @@ class MissionLogRouteStore @Inject constructor(
     fun add(point: StoredRoutePoint) {
         if (!isActive()) return
         routeFile.appendText(encode(point) + "\n")
+        _recordingState.value = _recordingState.value.copy(
+            isActive = true,
+            pointCount = _recordingState.value.pointCount + 1,
+        )
     }
 
     @Synchronized
@@ -95,10 +129,21 @@ class MissionLogRouteStore @Inject constructor(
         if (routeFile.exists() && !routeFile.delete()) {
             routeFile.writeText("")
         }
+        _recordingState.value = ActiveMissionLogRoute()
         return MissionLogRoute(startedAt, endedAtEpochMillis, points)
     }
 
     fun isActive(): Boolean = preferences.getBoolean(KEY_ACTIVE, false)
+
+    private fun loadRecordingState(): ActiveMissionLogRoute {
+        if (!isActive()) return ActiveMissionLogRoute()
+        val pointCount = if (routeFile.exists()) routeFile.useLines { it.count() } else 0
+        return ActiveMissionLogRoute(
+            isActive = true,
+            startedAtEpochMillis = preferences.getLong(KEY_STARTED_AT, 0L).takeIf { it > 0 },
+            pointCount = pointCount,
+        )
+    }
 
     private fun encode(point: StoredRoutePoint): String = listOf(
         point.timestampEpochMillis.toString(),

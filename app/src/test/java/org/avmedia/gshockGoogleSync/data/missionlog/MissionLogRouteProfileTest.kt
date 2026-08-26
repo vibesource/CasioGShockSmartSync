@@ -9,6 +9,7 @@ class MissionLogRouteProfileTest {
     fun `balanced is the intended default cadence`() {
         assertEquals(60_000L, MissionLogRouteProfile.BALANCED.intervalMillis)
         assertEquals(20f, MissionLogRouteProfile.BALANCED.minimumDistanceMetres)
+        assertEquals(60f, MissionLogRouteProfile.BALANCED.maximumAccuracyMetres)
     }
 
     @Test

@@ -11,10 +11,11 @@ import javax.inject.Singleton
 enum class MissionLogRouteProfile(
     val intervalMillis: Long,
     val minimumDistanceMetres: Float,
+    val maximumAccuracyMetres: Float,
 ) {
-    DETAILED(intervalMillis = 10_000, minimumDistanceMetres = 5f),
-    BALANCED(intervalMillis = 60_000, minimumDistanceMetres = 20f),
-    BATTERY_SAVER(intervalMillis = 120_000, minimumDistanceMetres = 50f),
+    DETAILED(intervalMillis = 10_000, minimumDistanceMetres = 5f, maximumAccuracyMetres = 40f),
+    BALANCED(intervalMillis = 60_000, minimumDistanceMetres = 20f, maximumAccuracyMetres = 60f),
+    BATTERY_SAVER(intervalMillis = 120_000, minimumDistanceMetres = 50f, maximumAccuracyMetres = 100f),
 }
 
 @Singleton

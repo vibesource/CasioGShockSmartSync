@@ -7,6 +7,7 @@ import android.location.Geocoder
 import android.location.LocationManager
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresPermission
+import androidx.core.location.LocationCompat
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -30,7 +31,11 @@ object LocationProvider {
 
     data class Location(
         val latitude: Double,
-        val longitude: Double
+        val longitude: Double,
+        val altitudeMetres: Double? = null,
+        val horizontalAccuracyMetres: Float? = null,
+        val verticalAccuracyMetres: Float? = null,
+        val timestampEpochMillis: Long? = null,
     ) {
         init {
             require(latitude in -90.0..90.0) { "Latitude must be between -90 and 90 degrees" }
@@ -39,7 +44,20 @@ object LocationProvider {
 
         companion object {
             fun fromAndroidLocation(location: android.location.Location): Location =
-                Location(location.latitude, location.longitude)
+                Location(
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    altitudeMetres = when {
+                        android.os.Build.VERSION.SDK_INT >= 34 && LocationCompat.hasMslAltitude(location) ->
+                            LocationCompat.getMslAltitudeMeters(location)
+                        location.hasAltitude() -> location.altitude
+                        else -> null
+                    },
+                    horizontalAccuracyMetres = location.accuracy.takeIf { location.hasAccuracy() },
+                    verticalAccuracyMetres = location.verticalAccuracyMeters
+                        .takeIf { location.hasVerticalAccuracy() },
+                    timestampEpochMillis = location.time.takeIf { it > 0 },
+                )
         }
     }
 

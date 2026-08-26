@@ -23,6 +23,8 @@ import org.avmedia.gshockGoogleSync.MainActivity
 import org.avmedia.gshockGoogleSync.R
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteStore
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteProfileStore
+import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteProfile
+import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteFilter
 import org.avmedia.gshockGoogleSync.data.missionlog.StoredRoutePoint
 import timber.log.Timber
 import javax.inject.Inject
@@ -34,19 +36,31 @@ class MissionLogRouteService : Service() {
 
     private val locationClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
     private var receivingLocations = false
+    private var recordingProfile = MissionLogRouteProfile.BALANCED
+    private var lastAcceptedPoint: StoredRoutePoint? = null
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.locations.forEach { location ->
-                routeStore.add(
-                    StoredRoutePoint(
-                        timestampEpochMillis = location.time,
-                        latitude = location.latitude,
-                        longitude = location.longitude,
-                        altitudeMetres = location.altitude.takeIf { location.hasAltitude() },
-                        accuracyMetres = location.accuracy.takeIf { location.hasAccuracy() },
-                    ),
+                val point = StoredRoutePoint(
+                    timestampEpochMillis = location.time,
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    altitudeMetres = location.altitude.takeIf { location.hasAltitude() },
+                    accuracyMetres = location.accuracy.takeIf { location.hasAccuracy() },
                 )
+                if (!MissionLogRouteFilter.accepts(
+                        candidate = point,
+                        previous = lastAcceptedPoint,
+                        maximumAccuracyMetres = recordingProfile.maximumAccuracyMetres,
+                    )
+                ) {
+                    Timber.d("Mission Log GPS fix rejected: accuracy=${location.accuracy}m")
+                    return@forEach
+                }
+                routeStore.add(point)
+                lastAcceptedPoint = point
             }
+            updateNotification()
         }
     }
 
@@ -57,6 +71,7 @@ class MissionLogRouteService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        recordingProfile = profileStore.profile.value
         promoteToForeground()
         requestLocationUpdates()
         return START_STICKY
@@ -69,32 +84,41 @@ class MissionLogRouteService : Service() {
     }
 
     private fun promoteToForeground() {
-        val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.createNotificationChannel(
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
                 "Mission Log route",
                 NotificationManager.IMPORTANCE_LOW,
             ),
         )
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun buildNotification(): android.app.Notification {
         val openApp = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_watch_later_black_24dp)
             .setContentTitle("Mission Log active")
-            .setContentText("Recording GPS route")
+            .setContentText(
+                "${recordingProfile.displayName()} · ${routeStore.recordingState.value.pointCount} GPS points",
+            )
             .setContentIntent(openApp)
             .setOngoing(true)
             .build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+    }
+
+    private fun updateNotification() {
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
     }
 
     private fun requestLocationUpdates() {
@@ -108,17 +132,20 @@ class MissionLogRouteService : Service() {
             stopSelf()
             return
         }
-        val profile = profileStore.profile.value
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, profile.intervalMillis)
-            .setMinUpdateIntervalMillis(profile.intervalMillis)
-            .setMinUpdateDistanceMeters(profile.minimumDistanceMetres)
+        val request = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            recordingProfile.intervalMillis,
+        )
+            .setMinUpdateIntervalMillis(recordingProfile.intervalMillis)
+            .setMinUpdateDistanceMeters(recordingProfile.minimumDistanceMetres)
             .build()
         try {
             locationClient.requestLocationUpdates(request, locationCallback, mainLooper)
             receivingLocations = true
             Timber.i(
-                "Mission Log GPS route recording started: ${profile.name}, " +
-                    "interval=${profile.intervalMillis}ms, distance=${profile.minimumDistanceMetres}m",
+                "Mission Log GPS route recording started: ${recordingProfile.name}, " +
+                    "interval=${recordingProfile.intervalMillis}ms, " +
+                    "distance=${recordingProfile.minimumDistanceMetres}m",
             )
         } catch (error: SecurityException) {
             Timber.e(error, "Mission Log GPS route permission was rejected")
@@ -137,4 +164,10 @@ class MissionLogRouteService : Service() {
             context.stopService(Intent(context, MissionLogRouteService::class.java))
         }
     }
+}
+
+private fun MissionLogRouteProfile.displayName(): String = when (this) {
+    MissionLogRouteProfile.DETAILED -> "Detailed"
+    MissionLogRouteProfile.BALANCED -> "Balanced"
+    MissionLogRouteProfile.BATTERY_SAVER -> "Battery saver"
 }

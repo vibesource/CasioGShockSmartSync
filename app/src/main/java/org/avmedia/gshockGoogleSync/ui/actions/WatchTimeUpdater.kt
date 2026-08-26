@@ -6,6 +6,7 @@ import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
 import org.avmedia.gshockGoogleSync.scratchpad.TimeSettingsStorage
 import org.avmedia.gshockGoogleSync.ui.time.SolarTimeHelper
 import org.avmedia.gshockGoogleSync.utils.LocalDataStorage
+import org.avmedia.gshockapi.ProgressEvents
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,5 +31,6 @@ class WatchTimeUpdater @Inject constructor(
 
         // Keep timeMs NULL so we get system time just before sending it for better accuracy.
         api.setTime(timeMs = null, offsetFormSystemTime = fineAdjustment + timeZoneOffset)
+        ProgressEvents.onNext("HomeTimeUpdated")
     }
 }

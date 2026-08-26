@@ -19,14 +19,20 @@ import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteProfile
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteProfileStore
+import org.avmedia.gshockGoogleSync.data.diagnostics.SyncDiagnosticsStore
 import org.avmedia.gshockGoogleSync.ui.common.AppCard
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 @HiltViewModel
 class MissionLogRouteSettingsViewModel @Inject constructor(
     private val store: MissionLogRouteProfileStore,
+    diagnosticsStore: SyncDiagnosticsStore,
 ) : ViewModel() {
     val profile = store.profile
+    val diagnostics = diagnosticsStore.events
 
     fun select(profile: MissionLogRouteProfile) = store.set(profile)
 }
@@ -36,6 +42,7 @@ fun MissionLogRouteSettings(
     viewModel: MissionLogRouteSettingsViewModel = hiltViewModel(),
 ) {
     val selected by viewModel.profile.collectAsState()
+    val diagnostics by viewModel.diagnostics.collectAsState()
     AppCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -62,9 +69,22 @@ fun MissionLogRouteSettings(
                     }
                 }
             }
+            if (diagnostics.isNotEmpty()) {
+                Text("Recent watch synchronization")
+                diagnostics.take(5).forEach { event ->
+                    Text(
+                        "${formatDiagnosticTime(event.timestampEpochMillis)} · ${event.message}",
+                    )
+                }
+            }
         }
     }
 }
+
+private fun formatDiagnosticTime(epochMillis: Long): String =
+    DateTimeFormatter.ofPattern("dd MMM, HH:mm:ss")
+        .withZone(ZoneId.systemDefault())
+        .format(Instant.ofEpochMilli(epochMillis))
 
 private fun MissionLogRouteProfile.description(): Pair<String, String> = when (this) {
     MissionLogRouteProfile.DETAILED -> "Detailed" to "Every 10 seconds / 5 m · highest battery use"
