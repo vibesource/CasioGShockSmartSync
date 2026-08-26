@@ -11,7 +11,7 @@ object MissionLogGpx {
         session.routePoints.orEmpty().forEach { point ->
             append("    <trkpt lat=\"").append(point.latitude)
                 .append("\" lon=\"").append(point.longitude).append("\">")
-            if (session.routeAltitudeDatum == "MSL") {
+            if (session.routeAltitudeDatum == ROUTE_ALTITUDE_DATUM_ANDROID_MSL) {
                 point.altitudeMetres?.let { append("<ele>").append(it).append("</ele>") }
             }
             append("<time>").append(Instant.ofEpochMilli(point.timestampEpochMillis)).append("</time>")

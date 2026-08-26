@@ -18,7 +18,7 @@ class MissionLogGpxTest {
             altitudeRawBase64 = "",
             exerciseRawBase64 = "",
             routePoints = listOf(StoredRoutePoint(1_000, 51.5, -0.1, 83.0, 5f)),
-            routeAltitudeDatum = "MSL",
+            routeAltitudeDatum = ROUTE_ALTITUDE_DATUM_ANDROID_MSL,
         )
 
         val gpx = MissionLogGpx.encode(session)

@@ -14,6 +14,8 @@ import org.avmedia.gshockapi.protocols.GgB100ProtocolPackets
 import javax.inject.Inject
 import javax.inject.Singleton
 
+const val ROUTE_ALTITUDE_DATUM_ANDROID_MSL = "ANDROID_MSL_GEOID"
+
 data class StoredMissionLogSession(
     val id: String,
     val capturedAtEpochMillis: Long,
@@ -97,7 +99,7 @@ class MissionLogStore @Inject constructor(
             routeStartedAtEpochMillis = route?.startedAtEpochMillis,
             routeEndedAtEpochMillis = route?.endedAtEpochMillis,
             routePoints = route?.points,
-            routeAltitudeDatum = route?.let { ROUTE_ALTITUDE_DATUM_MSL },
+            routeAltitudeDatum = route?.let { ROUTE_ALTITUDE_DATUM_ANDROID_MSL },
         )
         val updated = (listOf(session) + _sessions.value).take(MAX_SESSIONS)
         check(preferences.edit().putString(SESSIONS_KEY, gson.toJson(updated)).commit()) {
@@ -119,6 +121,5 @@ class MissionLogStore @Inject constructor(
         const val PREFERENCES_NAME = "mission_log_history"
         const val SESSIONS_KEY = "sessions_v1"
         const val MAX_SESSIONS = 50
-        const val ROUTE_ALTITUDE_DATUM_MSL = "MSL"
     }
 }

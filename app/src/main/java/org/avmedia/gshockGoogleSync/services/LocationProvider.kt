@@ -5,6 +5,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Geocoder
 import android.location.LocationManager
+import android.location.altitude.AltitudeConverter
+import android.os.Build
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresPermission
 import androidx.core.location.LocationCompat
@@ -22,6 +24,9 @@ object LocationProvider {
     private const val KEY_LATITUDE = "cached_latitude"
     private const val KEY_LONGITUDE = "cached_longitude"
     private const val KEY_HAS_CACHED_LOCATION = "has_cached_location"
+    private val altitudeConverter: AltitudeConverter? by lazy {
+        if (Build.VERSION.SDK_INT >= 34) AltitudeConverter() else null
+    }
 
     sealed interface LocationResult {
         data class Success(val location: Location) : LocationResult
@@ -43,16 +48,11 @@ object LocationProvider {
         }
 
         companion object {
-            fun fromAndroidLocation(location: android.location.Location): Location =
+            fun fromAndroidLocation(context: Context, location: android.location.Location): Location =
                 Location(
                     latitude = location.latitude,
                     longitude = location.longitude,
-                    altitudeMetres = when {
-                        android.os.Build.VERSION.SDK_INT >= 34 && LocationCompat.hasMslAltitude(location) ->
-                            LocationCompat.getMslAltitudeMeters(location)
-                        location.hasAltitude() -> location.altitude
-                        else -> null
-                    },
+                    altitudeMetres = meanSeaLevelAltitude(context, location),
                     horizontalAccuracyMetres = location.accuracy.takeIf { location.hasAccuracy() },
                     verticalAccuracyMetres = location.verticalAccuracyMeters
                         .takeIf { location.hasVerticalAccuracy() },
@@ -97,7 +97,7 @@ object LocationProvider {
                     .getCurrentLocation(request, cancellation.token)
                     .addOnSuccessListener { androidLocation ->
                         if (continuation.isActive) {
-                            continuation.resume(androidLocation?.let(Location::fromAndroidLocation))
+                            continuation.resume(androidLocation?.let { Location.fromAndroidLocation(context, it) })
                         }
                     }
                     .addOnFailureListener {
@@ -117,7 +117,7 @@ object LocationProvider {
             ?: return LocationResult.NoProvider
 
         return locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-            ?.let { LocationResult.Success(Location.fromAndroidLocation(it)) }
+            ?.let { LocationResult.Success(Location.fromAndroidLocation(context, it)) }
             ?: LocationResult.NoLocation
     }
 
@@ -129,6 +129,28 @@ object LocationProvider {
             putBoolean(KEY_HAS_CACHED_LOCATION, true)
             apply()
         }
+    }
+
+    private fun meanSeaLevelAltitude(
+        context: Context,
+        location: android.location.Location,
+    ): Double? {
+        if (!location.hasAltitude() || Build.VERSION.SDK_INT < 34) return null
+        if (LocationCompat.hasMslAltitude(location)) {
+            return LocationCompat.getMslAltitudeMeters(location)
+        }
+        val converted = android.location.Location(location)
+        return runCatching {
+            val converter = altitudeConverter ?: return@runCatching null
+            if (!converter.tryAddMslAltitudeToLocation(converted)) {
+                converter.addMslAltitudeToLocation(context, converted)
+            }
+            if (LocationCompat.hasMslAltitude(converted)) {
+                LocationCompat.getMslAltitudeMeters(converted)
+            } else {
+                null
+            }
+        }.getOrNull()
     }
 
     private fun getCachedLocation(context: Context): Location? {

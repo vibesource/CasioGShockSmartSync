@@ -41,7 +41,7 @@ class MissionLogRouteService : Service() {
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.locations.forEach { location ->
-                val normalized = LocationProvider.Location.fromAndroidLocation(location)
+                val normalized = LocationProvider.Location.fromAndroidLocation(this@MissionLogRouteService, location)
                 val point = StoredRoutePoint(
                     timestampEpochMillis = normalized.timestampEpochMillis ?: location.time,
                     latitude = normalized.latitude,

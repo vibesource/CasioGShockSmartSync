@@ -42,6 +42,7 @@ import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteMetrics
 import org.avmedia.gshockGoogleSync.data.missionlog.ActiveMissionLogRoute
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteProfile
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogGpx
+import org.avmedia.gshockGoogleSync.data.missionlog.ROUTE_ALTITUDE_DATUM_ANDROID_MSL
 import org.avmedia.gshockGoogleSync.theme.GShockSmartSyncTheme
 import org.avmedia.gshockGoogleSync.ui.common.ScreenTitle
 import java.time.Instant
@@ -228,7 +229,11 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
                     DetailLine("Route distance", formatDistance(MissionLogRouteMetrics.distanceMetres(route)))
                     DetailLine(
                         "GPX elevation",
-                        if (session.routeAltitudeDatum == "MSL") "Mean sea level" else "Omitted (legacy GPS datum)",
+                        if (session.routeAltitudeDatum == ROUTE_ALTITUDE_DATUM_ANDROID_MSL) {
+                            "Mean sea level"
+                        } else {
+                            "Omitted (unverified GPS datum)"
+                        },
                     )
                 }
 
