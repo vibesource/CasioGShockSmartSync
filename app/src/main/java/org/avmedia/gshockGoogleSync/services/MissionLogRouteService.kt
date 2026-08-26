@@ -22,6 +22,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.avmedia.gshockGoogleSync.MainActivity
 import org.avmedia.gshockGoogleSync.R
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteStore
+import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteProfileStore
 import org.avmedia.gshockGoogleSync.data.missionlog.StoredRoutePoint
 import timber.log.Timber
 import javax.inject.Inject
@@ -29,6 +30,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MissionLogRouteService : Service() {
     @Inject lateinit var routeStore: MissionLogRouteStore
+    @Inject lateinit var profileStore: MissionLogRouteProfileStore
 
     private val locationClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
     private var receivingLocations = false
@@ -106,14 +108,18 @@ class MissionLogRouteService : Service() {
             stopSelf()
             return
         }
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, UPDATE_INTERVAL_MS)
-            .setMinUpdateIntervalMillis(MIN_UPDATE_INTERVAL_MS)
-            .setMinUpdateDistanceMeters(MIN_UPDATE_DISTANCE_METRES)
+        val profile = profileStore.profile.value
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, profile.intervalMillis)
+            .setMinUpdateIntervalMillis(profile.intervalMillis)
+            .setMinUpdateDistanceMeters(profile.minimumDistanceMetres)
             .build()
         try {
             locationClient.requestLocationUpdates(request, locationCallback, mainLooper)
             receivingLocations = true
-            Timber.i("Mission Log GPS route recording started")
+            Timber.i(
+                "Mission Log GPS route recording started: ${profile.name}, " +
+                    "interval=${profile.intervalMillis}ms, distance=${profile.minimumDistanceMetres}m",
+            )
         } catch (error: SecurityException) {
             Timber.e(error, "Mission Log GPS route permission was rejected")
             stopSelf()
@@ -123,10 +129,6 @@ class MissionLogRouteService : Service() {
     companion object {
         private const val CHANNEL_ID = "mission_log_route"
         private const val NOTIFICATION_ID = 5594
-        private const val UPDATE_INTERVAL_MS = 10_000L
-        private const val MIN_UPDATE_INTERVAL_MS = 5_000L
-        private const val MIN_UPDATE_DISTANCE_METRES = 5f
-
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, MissionLogRouteService::class.java))
         }

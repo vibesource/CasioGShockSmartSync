@@ -127,7 +127,10 @@ fun SettingsList() {
             TimeAdjustment(settingsViewModel::onSettingUpdated)
         }
         WatchFeature(id = "location_indicator_card") {
-            LocationIndicatorSettings()
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LocationIndicatorSettings()
+                MissionLogRouteSettings()
+            }
         }
     }
 }
