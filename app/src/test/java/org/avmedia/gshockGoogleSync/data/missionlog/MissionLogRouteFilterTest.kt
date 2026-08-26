@@ -16,6 +16,18 @@ class MissionLogRouteFilterTest {
     }
 
     @Test
+    fun `rejects cached fix from before route start`() {
+        assertFalse(
+            MissionLogRouteFilter.accepts(
+                candidate = point(10_000, 51.5, -0.1, 12f),
+                previous = null,
+                maximumAccuracyMetres = 60f,
+                notBeforeEpochMillis = 10_001,
+            ),
+        )
+    }
+
+    @Test
     fun `rejects impossible jump and non increasing time`() {
         val previous = point(1_000, 51.5, -0.1, 10f)
         assertFalse(

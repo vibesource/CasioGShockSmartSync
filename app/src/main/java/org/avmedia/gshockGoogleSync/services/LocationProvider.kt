@@ -48,16 +48,17 @@ object LocationProvider {
         }
 
         companion object {
-            fun fromAndroidLocation(context: Context, location: android.location.Location): Location =
-                Location(
+            fun fromAndroidLocation(context: Context, location: android.location.Location): Location {
+                val msl = meanSeaLevelAltitude(context, location)
+                return Location(
                     latitude = location.latitude,
                     longitude = location.longitude,
-                    altitudeMetres = meanSeaLevelAltitude(context, location),
+                    altitudeMetres = msl?.metres,
                     horizontalAccuracyMetres = location.accuracy.takeIf { location.hasAccuracy() },
-                    verticalAccuracyMetres = location.verticalAccuracyMeters
-                        .takeIf { location.hasVerticalAccuracy() },
+                    verticalAccuracyMetres = msl?.accuracyMetres,
                     timestampEpochMillis = location.time.takeIf { it > 0 },
                 )
+            }
         }
     }
 
@@ -131,13 +132,15 @@ object LocationProvider {
         }
     }
 
+    private data class MslAltitude(val metres: Double, val accuracyMetres: Float?)
+
     private fun meanSeaLevelAltitude(
         context: Context,
         location: android.location.Location,
-    ): Double? {
+    ): MslAltitude? {
         if (!location.hasAltitude() || Build.VERSION.SDK_INT < 34) return null
         if (LocationCompat.hasMslAltitude(location)) {
-            return LocationCompat.getMslAltitudeMeters(location)
+            return mslAltitude(location)
         }
         val converted = android.location.Location(location)
         return runCatching {
@@ -145,12 +148,20 @@ object LocationProvider {
             if (!converter.tryAddMslAltitudeToLocation(converted)) {
                 converter.addMslAltitudeToLocation(context, converted)
             }
-            if (LocationCompat.hasMslAltitude(converted)) {
-                LocationCompat.getMslAltitudeMeters(converted)
+            mslAltitude(converted)
+        }.getOrNull()
+    }
+
+    private fun mslAltitude(location: android.location.Location): MslAltitude? {
+        if (!LocationCompat.hasMslAltitude(location)) return null
+        return MslAltitude(
+            metres = LocationCompat.getMslAltitudeMeters(location),
+            accuracyMetres = if (LocationCompat.hasMslAltitudeAccuracy(location)) {
+                LocationCompat.getMslAltitudeAccuracyMeters(location)
             } else {
                 null
-            }
-        }.getOrNull()
+            },
+        )
     }
 
     private fun getCachedLocation(context: Context): Location? {

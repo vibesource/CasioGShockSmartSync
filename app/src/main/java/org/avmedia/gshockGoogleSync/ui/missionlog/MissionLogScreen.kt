@@ -227,6 +227,9 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
                 if (route.isNotEmpty()) {
                     DetailLine("GPS points", route.size.toString())
                     DetailLine("Route distance", formatDistance(MissionLogRouteMetrics.distanceMetres(route)))
+                    routeAccuracySummary(route)?.let { summary ->
+                        DetailLine("Phone fix accuracy", summary)
+                    }
                     DetailLine(
                         "GPX elevation",
                         if (session.routeAltitudeDatum == ROUTE_ALTITUDE_DATUM_ANDROID_MSL) {
@@ -388,6 +391,15 @@ private fun formatDistance(distanceMetres: Double): String =
     } else {
         "%.2f km".format(distanceMetres / 1_000)
     }
+
+private fun routeAccuracySummary(points: List<StoredRoutePoint>): String? {
+    val horizontal = points.mapNotNull { it.accuracyMetres }.takeIf { it.isNotEmpty() }
+    val vertical = points.mapNotNull { it.verticalAccuracyMetres }.takeIf { it.isNotEmpty() }
+    return buildList {
+        horizontal?.let { add("horizontal ±%.1f m".format(it.average())) }
+        vertical?.let { add("vertical ±%.1f m".format(it.average())) }
+    }.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
 
 private fun MissionLogRouteProfile.displayName(): String = when (this) {
     MissionLogRouteProfile.DETAILED -> "Detailed"

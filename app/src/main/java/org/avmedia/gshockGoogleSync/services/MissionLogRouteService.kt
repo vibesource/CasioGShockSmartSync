@@ -48,11 +48,13 @@ class MissionLogRouteService : Service() {
                     longitude = normalized.longitude,
                     altitudeMetres = normalized.altitudeMetres,
                     accuracyMetres = normalized.horizontalAccuracyMetres,
+                    verticalAccuracyMetres = normalized.verticalAccuracyMetres,
                 )
                 if (!MissionLogRouteFilter.accepts(
                         candidate = point,
                         previous = lastAcceptedPoint,
                         maximumAccuracyMetres = recordingProfile.maximumAccuracyMetres,
+                        notBeforeEpochMillis = routeStore.recordingState.value.startedAtEpochMillis,
                     )
                 ) {
                     Timber.d("Mission Log GPS fix rejected: accuracy=${location.accuracy}m")
@@ -139,6 +141,7 @@ class MissionLogRouteService : Service() {
         )
             .setMinUpdateIntervalMillis(recordingProfile.intervalMillis)
             .setMinUpdateDistanceMeters(recordingProfile.minimumDistanceMetres)
+            .setMaxUpdateAgeMillis(0)
             .build()
         try {
             locationClient.requestLocationUpdates(request, locationCallback, mainLooper)

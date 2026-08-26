@@ -19,6 +19,7 @@ data class StoredRoutePoint(
     val longitude: Double,
     val altitudeMetres: Double? = null,
     val accuracyMetres: Float? = null,
+    val verticalAccuracyMetres: Float? = null,
 ) {
     init {
         require(latitude in -90.0..90.0) { "Latitude must be between -90 and 90 degrees" }
@@ -63,7 +64,11 @@ object MissionLogRouteFilter {
         candidate: StoredRoutePoint,
         previous: StoredRoutePoint?,
         maximumAccuracyMetres: Float,
+        notBeforeEpochMillis: Long? = null,
     ): Boolean {
+        if (notBeforeEpochMillis != null && candidate.timestampEpochMillis < notBeforeEpochMillis) {
+            return false
+        }
         if (candidate.accuracyMetres?.let { it > maximumAccuracyMetres } == true) return false
         if (previous == null) return true
         val elapsedSeconds = (candidate.timestampEpochMillis - previous.timestampEpochMillis) / 1_000.0
@@ -151,17 +156,19 @@ class MissionLogRouteStore @Inject constructor(
         point.longitude.toString(),
         point.altitudeMetres?.toString().orEmpty(),
         point.accuracyMetres?.toString().orEmpty(),
+        point.verticalAccuracyMetres?.toString().orEmpty(),
     ).joinToString(",")
 
     private fun decode(line: String): StoredRoutePoint? = runCatching {
         val fields = line.split(',')
-        require(fields.size == 5)
+        require(fields.size in 5..6)
         StoredRoutePoint(
             timestampEpochMillis = fields[0].toLong(),
             latitude = fields[1].toDouble(),
             longitude = fields[2].toDouble(),
             altitudeMetres = fields[3].takeIf(String::isNotEmpty)?.toDouble(),
             accuracyMetres = fields[4].takeIf(String::isNotEmpty)?.toFloat(),
+            verticalAccuracyMetres = fields.getOrNull(5)?.takeIf(String::isNotEmpty)?.toFloat(),
         )
     }.getOrNull()
 
