@@ -16,6 +16,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.avmedia.gshockGoogleSync.R
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
+import org.avmedia.gshockGoogleSync.data.steps.StepCounterStore
 import org.avmedia.gshockGoogleSync.scratchpad.TimeSettingsStorage
 import org.avmedia.gshockGoogleSync.ui.common.AppSnackbar
 import org.avmedia.gshockGoogleSync.ui.actions.WatchTimeUpdater
@@ -60,6 +61,7 @@ class TimeViewModel @Inject constructor(
     private val timeSettingsStorage: TimeSettingsStorage,
     private val watchTimeUpdater: WatchTimeUpdater,
     private val watchFeatureManager: IWatchFeatureManager,
+    private val stepCounterStore: StepCounterStore,
     @param:ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
@@ -75,7 +77,15 @@ class TimeViewModel @Inject constructor(
     init {
         refreshState()
 
-        if (WatchInfo.hasStepCounter || WatchInfo.hasStepCounterMock) {
+        if (WatchInfo.model == WatchInfo.WatchModel.GG_B100) {
+            viewModelScope.launch {
+                stepCounterStore.steps.collect { steps ->
+                    _state.value = _state.value.copy(stepCounterData = steps)
+                }
+            }
+        } else if ((WatchInfo.hasStepCounter && WatchInfo.model != WatchInfo.WatchModel.GG_B100) ||
+            WatchInfo.hasStepCounterMock
+        ) {
             startStepCounterPolling()
         }
     }
@@ -183,7 +193,9 @@ class TimeViewModel @Inject constructor(
                     watchName = api.getWatchName(),
                     timeZoneOption = option,
                     timeOffset = offset,
-                    stepCounterData = if (watchFeatureManager.isFeatureSupported("time.step_counter")) {
+                    stepCounterData = if (WatchInfo.model == WatchInfo.WatchModel.GG_B100) {
+                        stepCounterStore.steps.value
+                    } else if (watchFeatureManager.isFeatureSupported("time.step_counter")) {
                         if (WatchInfo.hasStepCounterMock) {
                             generateMockStepData()
                         } else {

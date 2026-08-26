@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.avmedia.gshockGoogleSync.R
 import org.avmedia.gshockGoogleSync.ui.common.AppCard
+import org.avmedia.gshockapi.WatchInfo
 import java.util.Calendar
 
 @Composable
@@ -160,12 +161,12 @@ fun StepCounterView(
                     // Show the last 6 active intervals (trailing slots are most recent)
                     val hourly = rawHourly.takeLast(6)
 
-                    // Generate labels relative to current time (each slot is 10 mins)
+                    val slotMinutes = if (WatchInfo.model == WatchInfo.WatchModel.GG_B100) 60 else 10
+                    // Generate labels relative to current time.
                     val calendar = Calendar.getInstance()
                     val timeLabels = List(hourly.size) { i ->
                         calendar.timeInMillis = System.currentTimeMillis()
-                        // Each slot is 10 minutes back
-                        calendar.add(Calendar.MINUTE, -(hourly.size - 1 - i) * 10)
+                        calendar.add(Calendar.MINUTE, -(hourly.size - 1 - i) * slotMinutes)
                         val hour = calendar.get(Calendar.HOUR)
                         val amPm = if (calendar.get(Calendar.AM_PM) == Calendar.AM) "a" else "p"
                         val displayHour = if (hour == 0) 12 else hour

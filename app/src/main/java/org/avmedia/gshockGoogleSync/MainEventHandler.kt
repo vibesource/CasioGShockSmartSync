@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogStore
+import org.avmedia.gshockGoogleSync.data.steps.StepCounterStore
 import org.avmedia.gshockGoogleSync.services.NotificationMonitorService
 import org.avmedia.gshockGoogleSync.services.LocationProvider
 import org.avmedia.gshockGoogleSync.utils.ActivityProvider
@@ -18,6 +19,7 @@ import org.avmedia.gshockGoogleSync.ui.common.AppSnackbar
 import org.avmedia.gshockapi.AppNotification
 import org.avmedia.gshockapi.EventAction
 import org.avmedia.gshockapi.ProgressEvents
+import org.avmedia.gshockapi.model.StepCounterData
 import timber.log.Timber
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -27,6 +29,7 @@ class MainEventHandler(
     private val repository: GShockRepository,
     private val screenManager: IScreenManager,
     private val missionLogStore: MissionLogStore,
+    private val stepCounterStore: StepCounterStore,
 ) {
     fun setupEventSubscription() {
         val eventActions = arrayOf(
@@ -39,10 +42,18 @@ class MainEventHandler(
             EventAction("HomeTimeUpdated") {},
             EventAction("RunActions") { handleRunAction() },
             EventAction("AppNotification") { handleAppNotification() },
-            EventAction("LocationServicesDisabled") { handleLocationServicesDisabled() }
+            EventAction("LocationServicesDisabled") { handleLocationServicesDisabled() },
+            EventAction("StepCounterDataReceived") { handleStepCounterData() },
         )
 
         ProgressEvents.runEventActions(Utils.AppHashCode(), eventActions)
+    }
+
+    private fun handleStepCounterData() {
+        val steps = ProgressEvents.getPayload("StepCounterDataReceived") as? StepCounterData ?: return
+        runCatching { stepCounterStore.save(steps) }
+            .onSuccess { Timber.i("Step count synchronized: ${steps.currentDaySteps}") }
+            .onFailure { error -> Timber.e(error, "Step count could not be persisted") }
     }
 
     private fun handleWatchInitialization() {
