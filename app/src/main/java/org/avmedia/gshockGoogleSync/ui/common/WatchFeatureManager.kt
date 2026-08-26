@@ -50,6 +50,7 @@ class WatchFeatureManager @Inject constructor() : IWatchFeatureManager {
         "actions.find_phone" to { WatchInfo.findButtonUserDefined },
         "actions.reminders" to { WatchInfo.hasReminders },
         "time.step_counter" to { WatchInfo.hasStepCounter || WatchInfo.hasStepCounterMock },
+        "mission_log.supported" to { WatchInfo.hasMissionLog },
         "alarms.chime" to { WatchInfo.chimeInSettings },
         "time_adjustment.supported" to { WatchInfo.hasTimeAdjustment },
         "time_adjustment.always_connected" to { WatchInfo.alwaysConnected }

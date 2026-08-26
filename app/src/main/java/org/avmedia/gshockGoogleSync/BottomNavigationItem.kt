@@ -47,6 +47,16 @@ data class BottomNavigationItem(
             )
         }
 
+        if (watchFeatureManager.isFeatureSupported("mission_log.supported")) {
+            baseItems.add(
+                BottomNavigationItem(
+                    label = stringResource(R.string.logs),
+                    icon = ImageVector.vectorResource(id = R.drawable.events),
+                    route = Screens.MissionLog.route,
+                )
+            )
+        }
+
         // Add remaining items
         baseItems.addAll(
             listOf(

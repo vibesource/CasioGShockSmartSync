@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
+import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogStore
 import org.avmedia.gshockGoogleSync.pairing.CompanionDevicePresenceMonitor
 import org.avmedia.gshockGoogleSync.pairing.DeviceAssociationManager
 import org.avmedia.gshockGoogleSync.services.DeviceManager
@@ -67,6 +68,9 @@ class GShockApplication : Application(), IScreenManager {
     @Inject
     lateinit var actionRunner: ActionRunner
 
+    @Inject
+    lateinit var missionLogStore: MissionLogStore
+
     fun init() {
         Timber.i("Initializing GShockApplication")
         CoroutineScope(Dispatchers.IO).launch {
@@ -93,7 +97,12 @@ class GShockApplication : Application(), IScreenManager {
 
         ActivityProvider.initialize(this)
         eventHandler =
-            MainEventHandler(context = this, repository = repository, screenManager = this)
+            MainEventHandler(
+                context = this,
+                repository = repository,
+                screenManager = this,
+                missionLogStore = missionLogStore,
+            )
         eventHandler.setupEventSubscription()
 
         // Registered here, not from a composable, so watch button presses still run when the

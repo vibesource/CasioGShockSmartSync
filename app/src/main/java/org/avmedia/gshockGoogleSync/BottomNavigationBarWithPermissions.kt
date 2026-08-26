@@ -41,6 +41,7 @@ import org.avmedia.gshockGoogleSync.ui.actions.ActionsScreen
 import org.avmedia.gshockGoogleSync.ui.alarms.AlarmsScreen
 import org.avmedia.gshockGoogleSync.ui.common.AppSnackbar
 import org.avmedia.gshockGoogleSync.ui.events.EventsScreen
+import org.avmedia.gshockGoogleSync.ui.missionlog.MissionLogScreen
 import org.avmedia.gshockGoogleSync.ui.settings.SettingsScreen
 import org.avmedia.gshockGoogleSync.ui.time.TimeScreen
 import kotlin.time.Duration.Companion.seconds
@@ -162,6 +163,9 @@ fun BottomNavigationBarWithPermissions(
                         R.string.required_permissions_denied_cannot_access_actions
                     ),
                 )
+            }
+            composable(Screens.MissionLog.route) {
+                MissionLogScreen()
             }
             composable(Screens.Settings.route) {
                 SettingsScreen()

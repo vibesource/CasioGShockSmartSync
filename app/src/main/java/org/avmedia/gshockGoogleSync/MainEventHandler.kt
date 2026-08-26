@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
+import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogStore
 import org.avmedia.gshockGoogleSync.services.NotificationMonitorService
 import org.avmedia.gshockGoogleSync.services.LocationProvider
 import org.avmedia.gshockGoogleSync.utils.ActivityProvider
@@ -24,7 +25,8 @@ import java.util.concurrent.TimeUnit
 class MainEventHandler(
     private val context: GShockApplication,
     private val repository: GShockRepository,
-    private val screenManager: IScreenManager
+    private val screenManager: IScreenManager,
+    private val missionLogStore: MissionLogStore,
 ) {
     fun setupEventSubscription() {
         val eventActions = arrayOf(
@@ -66,12 +68,22 @@ class MainEventHandler(
             runCatching {
                 repository.downloadMissionLog(location.latitude, location.longitude)
             }.onSuccess { missionLog ->
+                val saveResult = runCatching { missionLogStore.save(missionLog) }
+                saveResult.onFailure { error ->
+                    Timber.e(error, "Mission Log history could not be saved")
+                }
                 Timber.i(
                     "Mission Log complete: command=${missionLog.state.command}, " +
                         "altitude=${missionLog.altitudeData.size}B, " +
                         "exercise=${missionLog.exerciseData.size}B",
                 )
-                AppSnackbar("Mission Log received (${missionLog.state.command.name.lowercase()})")
+                AppSnackbar(
+                    if (saveResult.isSuccess) {
+                        "Mission Log received (${missionLog.state.command.name.lowercase()})"
+                    } else {
+                        "Mission Log received, but history could not be saved"
+                    },
+                )
             }.onFailure { error ->
                 Timber.e(error, "Mission Log transfer failed")
                 AppSnackbar("Mission Log failed: ${error.message ?: "unknown error"}")

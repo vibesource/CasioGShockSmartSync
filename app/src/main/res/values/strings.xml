@@ -4,6 +4,11 @@
     <string name="alarms">Alarms</string>
     <string name="time">Time</string>
     <string name="steps">Steps</string>
+    <string name="logs">Logs</string>
+    <string name="mission_log">Mission Log</string>
+    <string name="no_mission_logs">No Mission Log sessions have been received yet. Start or stop Mission Log from the watch to download one.</string>
+    <string name="show_details">Show details</string>
+    <string name="show_less">Show less</string>
     <string name="send_alarms_to_watch">Send to\n Watch</string>
     <string name="send_alarms_to_phone">Send to\nPhone</string>
     <string name="send_events_to_watch">Send to Watch\n Reminders</string>
