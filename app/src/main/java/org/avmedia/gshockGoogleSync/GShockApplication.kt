@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogStore
+import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteStore
 import org.avmedia.gshockGoogleSync.data.steps.StepCounterStore
 import org.avmedia.gshockGoogleSync.data.locationindicator.LocationTargetStore
 import org.avmedia.gshockGoogleSync.pairing.CompanionDevicePresenceMonitor
@@ -74,6 +75,9 @@ class GShockApplication : Application(), IScreenManager {
     lateinit var missionLogStore: MissionLogStore
 
     @Inject
+    lateinit var missionLogRouteStore: MissionLogRouteStore
+
+    @Inject
     lateinit var stepCounterStore: StepCounterStore
 
     @Inject
@@ -110,6 +114,7 @@ class GShockApplication : Application(), IScreenManager {
                 repository = repository,
                 screenManager = this,
                 missionLogStore = missionLogStore,
+                missionLogRouteStore = missionLogRouteStore,
                 stepCounterStore = stepCounterStore,
                 locationTargetStore = locationTargetStore,
             )

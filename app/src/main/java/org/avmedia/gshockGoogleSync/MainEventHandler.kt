@@ -11,11 +11,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogStore
+import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteStore
 import org.avmedia.gshockGoogleSync.data.steps.StepCounterStore
 import org.avmedia.gshockGoogleSync.data.locationindicator.LocationIndicatorCalculator
 import org.avmedia.gshockGoogleSync.data.locationindicator.LocationTargetStore
 import org.avmedia.gshockGoogleSync.services.NotificationMonitorService
 import org.avmedia.gshockGoogleSync.services.LocationProvider
+import org.avmedia.gshockGoogleSync.services.MissionLogRouteService
 import org.avmedia.gshockGoogleSync.utils.ActivityProvider
 import org.avmedia.gshockGoogleSync.utils.Utils
 import org.avmedia.gshockGoogleSync.ui.common.AppSnackbar
@@ -25,6 +27,7 @@ import org.avmedia.gshockapi.ProgressEvents
 import org.avmedia.gshockapi.model.StepCounterData
 import org.avmedia.gshockapi.model.LocationIndicatorCommand
 import org.avmedia.gshockapi.model.LocationIndicatorFailure
+import org.avmedia.gshockapi.protocols.GgB100ProtocolPackets.MissionLogState.Command
 import timber.log.Timber
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -34,6 +37,7 @@ class MainEventHandler(
     private val repository: GShockRepository,
     private val screenManager: IScreenManager,
     private val missionLogStore: MissionLogStore,
+    private val missionLogRouteStore: MissionLogRouteStore,
     private val stepCounterStore: StepCounterStore,
     private val locationTargetStore: LocationTargetStore,
 ) {
@@ -228,14 +232,42 @@ class MainEventHandler(
             runCatching {
                 repository.downloadMissionLog(location.latitude, location.longitude)
             }.onSuccess { missionLog ->
-                val saveResult = runCatching { missionLogStore.save(missionLog) }
+                val routeResult = runCatching {
+                    when (missionLog.state.command) {
+                        Command.START -> {
+                            missionLogRouteStore.begin()
+                            runCatching { MissionLogRouteService.start(context) }
+                                .getOrElse { error ->
+                                    missionLogRouteStore.finish()
+                                    throw error
+                                }
+                            null
+                        }
+                        Command.CONTINUE -> {
+                            missionLogRouteStore.resumeOrBegin()
+                            MissionLogRouteService.start(context)
+                            null
+                        }
+                        Command.STOP -> {
+                            missionLogRouteStore.finish().also { MissionLogRouteService.stop(context) }
+                        }
+                        else -> null
+                    }
+                }
+                routeResult.onFailure { error ->
+                    Timber.e(error, "Mission Log GPS route state could not be updated")
+                }
+                val saveResult = runCatching {
+                    missionLogStore.save(missionLog, routeResult.getOrNull())
+                }
                 saveResult.onFailure { error ->
                     Timber.e(error, "Mission Log history could not be saved")
                 }
                 Timber.i(
                     "Mission Log complete: command=${missionLog.state.command}, " +
                         "altitude=${missionLog.altitudeData.size}B, " +
-                        "exercise=${missionLog.exerciseData.size}B",
+                        "exercise=${missionLog.exerciseData.size}B, " +
+                        "route=${routeResult.getOrNull()?.points?.size ?: 0} points",
                 )
                 AppSnackbar(
                     if (saveResult.isSuccess) {

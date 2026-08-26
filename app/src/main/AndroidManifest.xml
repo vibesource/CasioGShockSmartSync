@@ -113,6 +113,11 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name=".services.MissionLogRouteService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
         <receiver
             android:name=".receivers.BleScanReceiver"
             android:exported="false" />

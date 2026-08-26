@@ -25,6 +25,9 @@ data class StoredMissionLogSession(
     val endMarkerIndex: Int?,
     val altitudeRawBase64: String,
     val exerciseRawBase64: String,
+    val routeStartedAtEpochMillis: Long? = null,
+    val routeEndedAtEpochMillis: Long? = null,
+    val routePoints: List<StoredRoutePoint>? = null,
 ) {
     /** Decode on access so histories saved before exercise support also benefit. */
     val exercise: MissionLogExerciseData?
@@ -60,7 +63,10 @@ class MissionLogStore @Inject constructor(
 
     val sessions: StateFlow<List<StoredMissionLogSession>> = _sessions.asStateFlow()
 
-    fun save(data: MissionLogData): StoredMissionLogSession = synchronized(lock) {
+    fun save(
+        data: MissionLogData,
+        route: MissionLogRoute? = null,
+    ): StoredMissionLogSession = synchronized(lock) {
         val capturedAt = System.currentTimeMillis()
         val decoded = data.altitude
         val session = StoredMissionLogSession(
@@ -87,6 +93,9 @@ class MissionLogStore @Inject constructor(
             endMarkerIndex = decoded?.endMarkerIndex,
             altitudeRawBase64 = Base64.encodeToString(data.altitudeData, Base64.NO_WRAP),
             exerciseRawBase64 = Base64.encodeToString(data.exerciseData, Base64.NO_WRAP),
+            routeStartedAtEpochMillis = route?.startedAtEpochMillis,
+            routeEndedAtEpochMillis = route?.endedAtEpochMillis,
+            routePoints = route?.points,
         )
         val updated = (listOf(session) + _sessions.value).take(MAX_SESSIONS)
         check(preferences.edit().putString(SESSIONS_KEY, gson.toJson(updated)).commit()) {

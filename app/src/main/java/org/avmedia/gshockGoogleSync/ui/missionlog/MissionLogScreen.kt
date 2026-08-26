@@ -26,12 +26,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.avmedia.gshockGoogleSync.R
 import org.avmedia.gshockGoogleSync.data.missionlog.StoredMissionLogSession
+import org.avmedia.gshockGoogleSync.data.missionlog.StoredRoutePoint
+import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteMetrics
 import org.avmedia.gshockGoogleSync.theme.GShockSmartSyncTheme
 import org.avmedia.gshockGoogleSync.ui.common.ScreenTitle
 import java.time.Instant
@@ -77,6 +80,7 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
     val minimum = samples.minOfOrNull { it.altitudeMetres }
     val maximum = samples.maxOfOrNull { it.altitudeMetres }
     val exercise = session.exercise
+    val route = session.routePoints.orEmpty()
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -108,6 +112,12 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
                 text = "${session.altitudePoints.size} watch-memory altitude points",
                 style = MaterialTheme.typography.bodyMedium,
             )
+            if (route.isNotEmpty()) {
+                Text(
+                    text = "GPS route · ${route.size} points · ${formatDistance(MissionLogRouteMetrics.distanceMetres(route))}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             exercise?.currentDay?.let { currentDay ->
                 val totals = buildList {
                     currentDay.steps?.let { add("$it steps") }
@@ -124,6 +134,10 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
             if (samples.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
                 AltitudeChart(session)
+            }
+            if (route.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                RouteTrace(route)
             }
 
             TextButton(onClick = { expanded = !expanded }) {
@@ -149,6 +163,16 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
                         "${decoded.exerciseSlots.count { it != null }} of ${decoded.exerciseSlots.size}",
                     )
                 }
+                session.routeStartedAtEpochMillis?.let {
+                    DetailLine("Route started", formatCapturedAt(it))
+                }
+                session.routeEndedAtEpochMillis?.let {
+                    DetailLine("Route ended", formatCapturedAt(it))
+                }
+                if (route.isNotEmpty()) {
+                    DetailLine("GPS points", route.size.toString())
+                    DetailLine("Route distance", formatDistance(MissionLogRouteMetrics.distanceMetres(route)))
+                }
 
                 if (session.altitudePoints.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
@@ -162,6 +186,50 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RouteTrace(points: List<StoredRoutePoint>) {
+    val routeColor = MaterialTheme.colorScheme.primary
+    val frameColor = MaterialTheme.colorScheme.outlineVariant
+    val startColor = MaterialTheme.colorScheme.tertiary
+    val projected = remember(points) {
+        val meanLatitudeRadians = Math.toRadians(points.map { it.latitude }.average())
+        points.map { point ->
+            point.longitude * kotlin.math.cos(meanLatitudeRadians) to point.latitude
+        }
+    }
+    val minimumX = projected.minOf { it.first }
+    val maximumX = projected.maxOf { it.first }
+    val minimumY = projected.minOf { it.second }
+    val maximumY = projected.maxOf { it.second }
+    val rangeX = (maximumX - minimumX).coerceAtLeast(0.000001)
+    val rangeY = (maximumY - minimumY).coerceAtLeast(0.000001)
+
+    Text("GPS route", style = MaterialTheme.typography.labelSmall)
+    Canvas(modifier = Modifier.fillMaxWidth().height(140.dp)) {
+        drawRect(color = frameColor, style = Stroke(width = 1.dp.toPx()))
+        val padding = 10.dp.toPx()
+        val width = (size.width - 2 * padding).coerceAtLeast(1f)
+        val height = (size.height - 2 * padding).coerceAtLeast(1f)
+        val offsets = projected.map { (x, y) ->
+            Offset(
+                x = padding + ((x - minimumX) / rangeX * width).toFloat(),
+                y = padding + ((maximumY - y) / rangeY * height).toFloat(),
+            )
+        }
+        if (offsets.size == 1) {
+            drawCircle(startColor, radius = 5.dp.toPx(), center = offsets.first())
+        } else {
+            val path = Path().apply {
+                moveTo(offsets.first().x, offsets.first().y)
+                offsets.drop(1).forEach { lineTo(it.x, it.y) }
+            }
+            drawPath(path, routeColor, style = Stroke(width = 3.dp.toPx()))
+            drawCircle(startColor, radius = 5.dp.toPx(), center = offsets.first())
+            drawCircle(routeColor, radius = 5.dp.toPx(), center = offsets.last())
         }
     }
 }
@@ -237,3 +305,10 @@ private fun formatUtc(value: String, pattern: String = "dd MMM yyyy, HH:mm:ss"):
     }.getOrDefault(value)
 
 private fun decodedSize(base64: String): Int = (base64.length * 3 / 4) - base64.takeLast(2).count { it == '=' }
+
+private fun formatDistance(distanceMetres: Double): String =
+    if (distanceMetres < 1_000) {
+        "${distanceMetres.toInt()} m"
+    } else {
+        "%.2f km".format(distanceMetres / 1_000)
+    }
