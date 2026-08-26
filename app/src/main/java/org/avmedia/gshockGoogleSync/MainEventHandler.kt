@@ -10,8 +10,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
 import org.avmedia.gshockGoogleSync.services.NotificationMonitorService
+import org.avmedia.gshockGoogleSync.services.LocationProvider
 import org.avmedia.gshockGoogleSync.utils.ActivityProvider
 import org.avmedia.gshockGoogleSync.utils.Utils
+import org.avmedia.gshockGoogleSync.ui.common.AppSnackbar
 import org.avmedia.gshockapi.AppNotification
 import org.avmedia.gshockapi.EventAction
 import org.avmedia.gshockapi.ProgressEvents
@@ -42,10 +44,39 @@ class MainEventHandler(
     }
 
     private fun handleWatchInitialization() {
+        if (repository.isMissionLogConnection()) {
+            handleMissionLogConnection()
+            return
+        }
         if (repository.supportsAppNotifications()) {
             NotificationMonitorService.startService(context)
         }
         screenManager.showContentSelector(repository)
+    }
+
+    private fun handleMissionLogConnection() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val location = LocationProvider.getLocation(context)
+            if (location == null) {
+                Timber.e("Mission Log: no current or cached phone location")
+                AppSnackbar("Mission Log failed: phone location is unavailable")
+                return@launch
+            }
+
+            runCatching {
+                repository.downloadMissionLog(location.latitude, location.longitude)
+            }.onSuccess { missionLog ->
+                Timber.i(
+                    "Mission Log complete: command=${missionLog.state.command}, " +
+                        "altitude=${missionLog.altitudeData.size}B, " +
+                        "exercise=${missionLog.exerciseData.size}B",
+                )
+                AppSnackbar("Mission Log received (${missionLog.state.command.name.lowercase()})")
+            }.onFailure { error ->
+                Timber.e(error, "Mission Log transfer failed")
+                AppSnackbar("Mission Log failed: ${error.message ?: "unknown error"}")
+            }
+        }
     }
 
     private fun handleAppNotification() {

@@ -66,8 +66,11 @@ android {
 }
 
 dependencies {
-    implementation(libs.gshockapi)
-    // implementation project(':api')
+    if (project.hasProperty('useLocalGShockApi')) {
+        implementation project(':api')
+    } else {
+        implementation(libs.gshockapi)
+    }
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

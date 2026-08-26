@@ -18,3 +18,9 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Casio GShock Smart Sync"
 include ':app'
+
+// Development switch for testing unreleased GShockAPI changes from a sibling checkout.
+if (gradle.startParameter.projectProperties.containsKey('useLocalGShockApi')) {
+    include ':api'
+    project(':api').projectDir = file('../GShockAPI/api')
+}
