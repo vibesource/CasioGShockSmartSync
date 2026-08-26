@@ -39,6 +39,13 @@ android {
     }
 
     buildTypes {
+        // Instrumentation tests must target this isolated package, never the user's live app.
+        deviceTest {
+            initWith debug
+            applicationIdSuffix ".deviceTest"
+            versionNameSuffix "-device-test"
+            matchingFallbacks = ['debug']
+        }
         release {
             if (signingConfigs.release.storeFile != null) {
                 signingConfig signingConfigs.release
@@ -46,6 +53,11 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+    // Opt in explicitly when running on-device tests. Normal debug builds retain their
+    // standard unit-test variant, while instrumentation targets the suffixed sandbox app.
+    if (project.hasProperty('isolatedDeviceTests')) {
+        testBuildType "deviceTest"
     }
 
     buildFeatures {
