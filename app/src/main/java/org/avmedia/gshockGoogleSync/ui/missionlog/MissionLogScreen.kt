@@ -119,7 +119,7 @@ private fun ActiveMissionLogCard(
 private fun MissionLogSessionCard(session: StoredMissionLogSession) {
     val context = LocalContext.current
     var expanded by rememberSaveable(session.id) { mutableStateOf(false) }
-    val samples = session.altitudeSamples
+    val samples = session.resolvedAltitudeSamples
     val minimum = samples.minOfOrNull { it.altitudeMetres }
     val maximum = samples.maxOfOrNull { it.altitudeMetres }
     val exercise = session.exercise
@@ -200,7 +200,7 @@ private fun MissionLogSessionCard(session: StoredMissionLogSession) {
             }
 
             if (expanded) {
-                session.altitudeStartUtc?.let {
+                session.resolvedAltitudeStartUtc?.let {
                     DetailLine("Altitude series", formatUtc(it))
                 }
                 session.watchTimestampUtc?.let {

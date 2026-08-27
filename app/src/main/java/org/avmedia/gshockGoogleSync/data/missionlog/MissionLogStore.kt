@@ -32,6 +32,26 @@ data class StoredMissionLogSession(
     val routePoints: List<StoredRoutePoint>? = null,
     val routeAltitudeDatum: String? = null,
 ) {
+    /** Re-decode retained raw data so protocol improvements also repair saved history. */
+    private val decodedAltitude
+        get() = runCatching {
+            GgB100ProtocolPackets.decodeMissionLogAltitude(
+                Base64.decode(altitudeRawBase64, Base64.DEFAULT),
+            )
+        }.getOrNull()
+
+    val resolvedAltitudeStartUtc: String?
+        get() = decodedAltitude?.startTimeUtc?.toString() ?: altitudeStartUtc
+
+    val resolvedAltitudeSamples: List<StoredAltitudeSample>
+        get() = decodedAltitude?.samples?.map { sample ->
+            StoredAltitudeSample(
+                index = sample.index,
+                altitudeMetres = sample.altitudeMetres,
+                timestampUtc = sample.timestampUtc?.toString(),
+            )
+        } ?: altitudeSamples
+
     /** Decode on access so histories saved before exercise support also benefit. */
     val exercise: MissionLogExerciseData?
         get() = runCatching {
