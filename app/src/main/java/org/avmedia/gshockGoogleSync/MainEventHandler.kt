@@ -9,7 +9,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlin.math.roundToInt
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogStore
 import org.avmedia.gshockGoogleSync.data.missionlog.MissionLogRouteStore
@@ -30,7 +29,6 @@ import org.avmedia.gshockapi.model.StepCounterData
 import org.avmedia.gshockapi.model.LocationIndicatorCommand
 import org.avmedia.gshockapi.model.LocationIndicatorFailure
 import org.avmedia.gshockapi.protocols.GgB100ProtocolPackets.MissionLogState.Command
-import org.avmedia.gshockapi.WatchInfo
 import timber.log.Timber
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -108,33 +106,8 @@ class MainEventHandler(
         else -> "Unknown connection reason"
     }
 
-    private val altimeterCorrectionMutex = Mutex()
-
     private fun handleHomeTimeUpdated() {
         syncDiagnosticsStore.record("TIME_SYNC", connectionReasonLabel())
-        if (!repository.isAutoTimeStarted() || !WatchInfo.hasAltimeterCorrection) return
-
-        CoroutineScope(Dispatchers.IO).launch {
-            if (!altimeterCorrectionMutex.tryLock()) return@launch
-            try {
-                val location = LocationProvider.getFreshLocation(context, timeoutMillis = 20_000)
-                val altitude = location?.altitudeMetres?.roundToInt()
-                val success = runCatching { repository.correctAltimeter(altitude) }
-                    .getOrElse { error ->
-                        Timber.e(error, "Scheduled altimeter correction failed")
-                        false
-                    }
-                val message = when {
-                    success && altitude != null -> "Watch accepted ${altitude} m from phone location"
-                    altitude == null -> "Phone altitude unavailable; failure response sent"
-                    else -> "Watch rejected ${altitude} m correction"
-                }
-                syncDiagnosticsStore.record("ALTITUDE_CORRECTION", message)
-                Timber.i("Scheduled altimeter correction: $message")
-            } finally {
-                altimeterCorrectionMutex.unlock()
-            }
-        }
     }
 
     private val locationIndicatorMutex = Mutex()
