@@ -2,6 +2,7 @@ package org.avmedia.gshockGoogleSync.ui.actions
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import org.avmedia.gshockGoogleSync.data.altitude.AltitudeCorrectionQualityGate
 import org.avmedia.gshockGoogleSync.data.diagnostics.SyncDiagnosticsStore
 import org.avmedia.gshockGoogleSync.data.repository.GShockRepository
 import org.avmedia.gshockGoogleSync.scratchpad.TimeSettingsStorage
@@ -42,22 +43,32 @@ class WatchTimeUpdater @Inject constructor(
                 LocationProvider.getFreshLocation(
                     context,
                     timeoutMillis = 4_000,
-                    maxUpdateAgeMillis = 15_000,
+                    maxUpdateAgeMillis = AltitudeCorrectionQualityGate.MAX_FIX_AGE_MILLIS,
                 )
             }.onFailure { error ->
                 Timber.e(error, "Unable to obtain scheduled altimeter location")
             }.getOrNull()
-            val altitude = location?.altitudeMetres?.roundToInt()
+            val quality = AltitudeCorrectionQualityGate.evaluate(location)
+            val altitude = (quality as? AltitudeCorrectionQualityGate.Result.Accepted)
+                ?.altitudeMetres
 
             api.setTimeWithAltimeterCorrection(
                 altitudeMetres = altitude,
                 timeMs = null,
                 offsetFormSystemTime = fineAdjustment + timeZoneOffset,
             )
-            val message = if (altitude != null) {
-                "Queued ${altitude} m before final time packet"
-            } else {
-                "Queued unavailable-altitude response before final time packet"
+            val message = when (quality) {
+                is AltitudeCorrectionQualityGate.Result.Accepted -> {
+                    val vertical = quality.verticalAccuracyMetres?.let {
+                        ", v±${it.roundToInt()} m"
+                    } ?: ", vertical accuracy unavailable"
+                    "Queued ${quality.altitudeMetres} m before final time packet " +
+                        "(h±${quality.horizontalAccuracyMetres.roundToInt()} m$vertical, " +
+                        "age ${quality.ageMillis / 1_000} s)"
+                }
+                is AltitudeCorrectionQualityGate.Result.Rejected -> {
+                    "Skipped correction: ${quality.reason}; queued unavailable response"
+                }
             }
             syncDiagnosticsStore.record("ALTITUDE_CORRECTION", message)
             Timber.i("Scheduled altimeter correction: $message")
