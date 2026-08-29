@@ -52,7 +52,7 @@ class WatchTimeUpdater @Inject constructor(
             val altitude = (quality as? AltitudeCorrectionQualityGate.Result.Accepted)
                 ?.altitudeMetres
 
-            api.setTimeWithAltimeterCorrection(
+            val correctionPacketWritten = api.setTimeWithAltimeterCorrection(
                 altitudeMetres = altitude,
                 timeMs = null,
                 offsetFormSystemTime = fineAdjustment + timeZoneOffset,
@@ -62,12 +62,22 @@ class WatchTimeUpdater @Inject constructor(
                     val vertical = quality.verticalAccuracyMetres?.let {
                         ", v±${it.roundToInt()} m"
                     } ?: ", vertical accuracy unavailable"
-                    "Queued ${quality.altitudeMetres} m before final time packet " +
+                    val outcome = if (correctionPacketWritten) {
+                        "Wrote ${quality.altitudeMetres} m before final time packet"
+                    } else {
+                        "Failed to write ${quality.altitudeMetres} m before final time packet"
+                    }
+                    "$outcome " +
                         "(h±${quality.horizontalAccuracyMetres.roundToInt()} m$vertical, " +
                         "age ${quality.ageMillis / 1_000} s)"
                 }
                 is AltitudeCorrectionQualityGate.Result.Rejected -> {
-                    "Skipped correction: ${quality.reason}; queued unavailable response"
+                    val outcome = if (correctionPacketWritten) {
+                        "wrote unavailable response"
+                    } else {
+                        "failed to write unavailable response"
+                    }
+                    "Skipped correction: ${quality.reason}; $outcome"
                 }
             }
             syncDiagnosticsStore.record("ALTITUDE_CORRECTION", message)
